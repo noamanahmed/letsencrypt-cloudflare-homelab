@@ -1,0 +1,187 @@
+#!/bin/bash
+set -euo pipefail
+
+# Determine script directory and base directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+LIB_DIR="$BASE_DIR/lib"
+
+# Source modules
+source "$LIB_DIR/util.sh"
+source "$LIB_DIR/validate.sh"
+source "$LIB_DIR/cert.sh"
+source "$LIB_DIR/webserver_nginx.sh"
+source "$LIB_DIR/webserver_apache.sh"
+
+usage() {
+    echo "Usage: lecf [action] [server] [options]"
+    echo "Actions:"
+    echo "  run    - Issue or renew certificate if needed"
+    echo "  renew  - Force renewal"
+    echo "  check  - Validate environment only"
+    echo "Servers:"
+    echo "  nginx, apache"
+    echo "Options:"
+    echo "  --cf-api-token        Cloudflare API Token (Required)"
+    echo "  --domain              Target domain (Required)"
+    echo "  --email               Admin email for LE (Required)"
+    echo "  --cert-dir            Path to store certs (Default: /etc/lecf/certs)"
+    echo "  --webroot-dir         Webroot path (Default: /var/www/html)"
+    echo "  --renew-days          Days before expiry to renew (Default: 30)"
+    echo "  --propagation-seconds DNS propagation wait time (Default: 30)"
+    exit 1
+}
+
+# Defaults
+ACTION=""
+SERVER=""
+CF_API_TOKEN=""
+DOMAIN=""
+EMAIL=""
+CERT_DIR="/etc/lecf/certs"
+WEBROOT_DIR="/var/www/html"
+RENEW_DAYS=30
+PROPAGATION_SECONDS=30
+
+interactive_mode=false
+if [ $# -eq 0 ]; then
+    interactive_mode=true
+fi
+
+# Positional arguments parsing
+if [[ $# -gt 0 && ! "$1" == --* ]]; then
+    ACTION="$1"
+    shift
+fi
+
+if [[ $# -gt 0 && ! "$1" == --* ]]; then
+    SERVER="$1"
+    shift
+fi
+
+# Parse remaining arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --cf-api-token)
+            CF_API_TOKEN="$2"
+            shift 2
+            ;;
+        --domain)
+            DOMAIN="$2"
+            shift 2
+            ;;
+        --email)
+            EMAIL="$2"
+            shift 2
+            ;;
+        --cert-dir)
+            CERT_DIR="$2"
+            shift 2
+            ;;
+        --webroot-dir)
+            WEBROOT_DIR="$2"
+            shift 2
+            ;;
+        --renew-days)
+            RENEW_DAYS="$2"
+            shift 2
+            ;;
+        --propagation-seconds)
+            PROPAGATION_SECONDS="$2"
+            shift 2
+            ;;
+        *)
+            log_error "Unknown parameter: $1"
+            usage
+            ;;
+    esac
+done
+
+# Interactive fallback
+if [[ -z "$ACTION" ]]; then
+    read -rp "Enter action (run/renew/check): " ACTION
+fi
+if [[ -z "$SERVER" && "$ACTION" != "check" ]]; then
+    read -rp "Enter server (nginx/apache): " SERVER
+fi
+if [[ -z "$DOMAIN" && "$ACTION" != "check" ]]; then
+    read -rp "Enter domain (e.g., example.com): " DOMAIN
+fi
+if [[ -z "$EMAIL" && "$ACTION" != "check" ]]; then
+    read -rp "Enter email: " EMAIL
+fi
+if [[ -z "$CF_API_TOKEN" && "$ACTION" != "check" ]]; then
+    read -rsp "Enter Cloudflare API Token: " CF_API_TOKEN
+    echo "" # newline after silent read
+fi
+
+# Validation
+if [[ "$ACTION" != "run" && "$ACTION" != "renew" && "$ACTION" != "check" ]]; then
+    log_error "Invalid action: $ACTION"
+    usage
+fi
+
+if [[ "$ACTION" != "check" ]]; then
+    if [[ "$SERVER" != "nginx" && "$SERVER" != "apache" ]]; then
+        log_error "Server must be nginx or apache."
+        usage
+    fi
+    if [[ -z "$DOMAIN" || -z "$EMAIL" || -z "$CF_API_TOKEN" ]]; then
+        log_error "Domain, Email, and CF_API_TOKEN are required for regular actions."
+        usage
+    fi
+fi
+
+# 1. Validate environment
+validate_env # defined in lib/validate.sh
+
+if [[ "$ACTION" == "check" ]]; then
+    log_info "Check completed successfully."
+    exit 0
+fi
+
+# Process run/renew
+MUST_RENEW=false
+
+if [[ "$ACTION" == "renew" ]]; then
+    MUST_RENEW=true
+else
+    # Check expiry for run action
+    CERT_FILE="$CERT_DIR/$DOMAIN/fullchain.pem"
+    if check_expiry "$CERT_FILE" "$RENEW_DAYS"; then
+        MUST_RENEW=true
+    fi
+fi
+
+if [ "$MUST_RENEW" = true ]; then
+    log_info "Proceeding with issuance/renewal..."
+    run_certbot "$DOMAIN" "$EMAIL" "$CF_API_TOKEN" "$PROPAGATION_SECONDS"
+    
+    # Store internal copy
+    copy_certs "$DOMAIN" "$CERT_DIR"
+    
+    # Deploy to web server
+    if [[ "$SERVER" == "nginx" ]]; then
+        deploy_nginx "$DOMAIN" "$CERT_DIR"
+    elif [[ "$SERVER" == "apache" ]]; then
+        deploy_apache "$DOMAIN" "$CERT_DIR"
+    fi
+
+    # Run hooks
+    HOOKS_DIR="$BASE_DIR/hooks/post-renew.d"
+    if [ -d "$HOOKS_DIR" ]; then
+        log_info "Executing post-renew hooks..."
+        for file in "$HOOKS_DIR"/*; do
+            if [ -x "$file" ] && [ -f "$file" ]; then
+                log_info "Running hook: $file"
+                "$file"
+            fi
+        done
+    fi
+
+    log_info "Renewal and deployment completed successfully."
+else
+    log_info "No renewal needed. Exiting."
+fi
+
+exit 0

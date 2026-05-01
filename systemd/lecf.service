@@ -1,0 +1,8 @@
+[Unit]
+Description=Let's Encrypt Cloudflare Helper
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Replace placeholders with an actual token, domain, and email.
+ExecStart=/usr/local/bin/lecf run nginx --domain YOUR_DOMAIN --email YOUR_EMAIL --cf-api-token YOUR_TOKEN

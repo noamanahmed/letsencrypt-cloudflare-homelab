@@ -26,16 +26,24 @@ Build a shell-based automation tool (`lecf`) that:
 ## 3. CLI Interface
 
 ```
-lecf run [nginx|apache]
-lecf renew [nginx|apache]
-lecf check
+lecf [action] [server] [options]
+```
+
+Examples:
+```
+# Provide all arguments via CLI
+lecf run nginx --domain example.com --email admin@example.com --cf-api-token xxx
+
+# Run interactively (prompts for missing required parameters)
+lecf
 ```
 
 Behavior:
 
-* `run` → issue or renew if needed
-* `renew` → force renewal
-* `check` → validate environment only
+* `action` → `run` (issue/renew), `renew` (force renewal), `check` (validate environment)
+* `server` → `nginx` or `apache` (Required)
+* **Interactive Mode**: If the user doesn't provide any arguments, the script will take input interactively during processing.
+
 
 ---
 
@@ -85,29 +93,27 @@ certbot plugins | grep cloudflare
 
 ---
 
-## 5. Config System
+## 5. Input Parameters (CLI & Interactive)
 
-File: `configs/example.env`
+There are no `.env` files. The script accepts arguments from the CLI as parameters. If the user doesn't provide any arguments, the script will take input interactively during processing.
 
-Loaded via:
+### Required Parameters:
 
-```
-source configs/example.env
-```
+* `<action>`: `run`, `renew`, or `check` (Positional arg 1)
+* `<server>`: `nginx` or `apache` (Positional arg 2, required)
+* `--cf-api-token <token>`: Cloudflare API Token (Required)
 
-### Required Variables:
+### Other Data Needed (Arguments or Interactive Prompt):
 
-```
-DOMAIN=example.com
-EMAIL=admin@example.com
-CF_API_TOKEN=xxx
+* `--domain <domain>`: Domain name for the certificate
+* `--email <email>`: Email address for Let's Encrypt
 
-CERT_DIR=/etc/lecf/certs
-WEBROOT_DIR=/var/www/html
+### Optional Parameters:
 
-RENEW_DAYS=30
-PROPAGATION_SECONDS=30
-```
+* `--cert-dir <path>` (Default: `/etc/lecf/certs`)
+* `--webroot-dir <path>` (Default: `/var/www/html`)
+* `--renew-days <days>` (Default: `30`)
+* `--propagation-seconds <sec>` (Default: `30`)
 
 ---
 
@@ -278,7 +284,7 @@ All scripts must use shared logger in `lib/util.sh`.
 ### lecf.service
 
 * Type: oneshot
-* Runs: `lecf run nginx`
+* Runs: `/usr/local/bin/lecf run nginx --domain example.com --email admin@example.com --cf-api-token <TOKEN>`
 
 ### lecf.timer
 
@@ -290,7 +296,7 @@ All scripts must use shared logger in `lib/util.sh`.
 ## 12. Cron Fallback
 
 ```
-0 */12 * * * /usr/local/bin/lecf run nginx
+0 */12 * * * /usr/local/bin/lecf run nginx --domain example.com --email admin@example.com --cf-api-token <TOKEN>
 ```
 
 ---
@@ -342,7 +348,7 @@ CMD ["sh", "/app/bin/lecf", "run"]
 
 Service must:
 
-* mount config
+* provide required CLI arguments in the `command` section
 * mount cert directories
 * run periodically OR manually
 
@@ -382,18 +388,38 @@ No inbound required.
 Command:
 
 ```
-lecf run nginx
+lecf run nginx --domain example.com --email admin@example.com --cf-api-token xxx
 ```
 
 Must:
 
 1. Validate environment
-2. Load config
+2. Parse CLI arguments (or prompt interactively if none provided)
 3. Check certificate expiry
 4. Renew if needed
 5. Deploy to nginx
 6. Reload nginx safely
 7. Exit cleanly
+
+---
+
+## 18. Kubernetes Integration
+
+### 18.1 Deployment Architecture
+
+* **Type**: `CronJob`
+* **Schedule**: `0 */12 * * *` (Every 12 hours)
+* **Image**: Uses the dockerized version of `lecf`
+
+### 18.2 Configuration injection
+
+* `COMMAND` configuration passes CLI arguments natively to `lecf`.
+* Sensitive parameters (like `--cf-api-token`, `--email`, `--domain`) are passed to the CLI arguments via environment variables bound from a Kubernetes `Secret`.
+
+### 18.3 Persistence
+
+* **Certs PVC**: Claim for storing managed internal certificates across runs (`/certs`)
+* **Let's Encrypt PVC**: Core LE directory ensuring ACME configuration persists (`/etc/letsencrypt`)
 
 ---
 

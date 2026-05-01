@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  lecf:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # This requires .env in the same directory or exported env vars.
+    command: ["run", "nginx", "--domain", "${DOMAIN}", "--email", "${EMAIL}", "--cf-api-token", "${CF_API_TOKEN}"]
+    volumes:
+      - lecf_certs:/etc/lecf/certs
+      - letsencrypt_data:/etc/letsencrypt
+    restart: "no"
+
+volumes:
+  lecf_certs:
+  letsencrypt_data:

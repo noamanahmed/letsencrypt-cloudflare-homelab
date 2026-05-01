@@ -1,0 +1,10 @@
+[Unit]
+Description=Run LECF twice daily
+
+[Timer]
+OnCalendar=*-*-* 00/12:00:00
+Persistent=true
+RandomizedDelaySec=3600
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,82 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lecf-cronjob
+  namespace: letsencrypt
+spec:
+  schedule: "0 */12 * * *" # Runs every 12 hours
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: lecf
+            image: your_registry/letsencrypt-cloudflare-homelab:latest
+            imagePullPolicy: IfNotPresent
+            # Action and Server are required args, we default to run and nginx.
+            command: ["/app/bin/lecf", "run", "nginx"]
+            args: 
+              - "--domain"
+              - "$(DOMAIN)"
+              - "--email"
+              - "$(EMAIL)"
+              - "--cf-api-token"
+              - "$(CF_API_TOKEN)"
+              - "--cert-dir"
+              - "/certs"
+            env:
+              - name: DOMAIN
+                valueFrom:
+                  secretKeyRef:
+                    name: lecf-secret
+                    key: domain
+              - name: EMAIL
+                valueFrom:
+                  secretKeyRef:
+                    name: lecf-secret
+                    key: email
+              - name: CF_API_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: lecf-secret
+                    key: cf-api-token
+            volumeMounts:
+            - name: certs-volume
+              mountPath: /certs
+            - name: letsencrypt-volume
+              mountPath: /etc/letsencrypt
+          volumes:
+          - name: certs-volume
+            persistentVolumeClaim:
+              claimName: lecf-certs-pvc
+          - name: letsencrypt-volume
+            persistentVolumeClaim:
+              claimName: lecf-letsencrypt-pvc
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lecf-certs-pvc
+  namespace: letsencrypt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lecf-letsencrypt-pvc
+  namespace: letsencrypt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
