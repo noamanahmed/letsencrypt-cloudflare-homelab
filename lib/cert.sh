@@ -49,7 +49,7 @@ run_certbot() {
     chmod 600 "$creds_file"
 
     log_info "Running certbot for $domain and *.$domain..."
-    certbot certonly \
+    PYTHONWARNINGS="ignore" certbot certonly \
         --dns-cloudflare \
         --dns-cloudflare-credentials "$creds_file" \
         --dns-cloudflare-propagation-seconds "$prop_seconds" \

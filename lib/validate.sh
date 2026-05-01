@@ -24,7 +24,7 @@ validate_env() {
     done
 
     # Check for certbot cloudflare plugin
-    if ! certbot plugins 2>&1 | grep -iq cloudflare; then
+    if ! PYTHONWARNINGS="ignore" certbot plugins 2>&1 | grep -iq cloudflare; then
         log_error "certbot cloudflare plugin is not installed. (python3-certbot-dns-cloudflare or certbot-dns-cloudflare)"
         exit 1
     fi
