@@ -20,11 +20,30 @@ deploy_apache() {
     mv "$target_dir/fullchain.pem.tmp" "$target_dir/fullchain.pem"
     mv "$target_dir/privkey.pem.tmp" "$target_dir/privkey.pem"
     
-    if command -v systemctl >/dev/null 2>&1; then
-        log_info "Reloading Apache via systemctl..."
-        apachectl configtest && systemctl reload apache2
+    if command -v apachectl >/dev/null 2>&1; then
+        apachectl configtest
+
+        if command -v systemctl >/dev/null 2>&1; then
+            log_info "Reloading Apache via systemctl..."
+            systemctl reload apache2
+        elif command -v rc-service >/dev/null 2>&1; then
+            log_info "Reloading Apache via OpenRC..."
+            rc-service apache2 reload
+        else
+            log_info "Reloading Apache directly..."
+            apachectl graceful
+        fi
+    elif command -v httpd >/dev/null 2>&1; then
+        httpd -t
+
+        if command -v rc-service >/dev/null 2>&1; then
+            log_info "Reloading Apache via OpenRC..."
+            rc-service apache2 reload
+        else
+            log_info "Reloading Apache directly..."
+            httpd -k graceful
+        fi
     else
-        log_info "Reloading Apache directly (systemctl not found)..."
-        apachectl configtest && apachectl graceful
+        log_info "Apache binary not found locally. Certificates deployed to $target_dir; reload the web server container/service externally."
     fi
 }

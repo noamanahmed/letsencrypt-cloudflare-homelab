@@ -9,9 +9,25 @@ services:
     command: ["run", "nginx", "--domain", "${DOMAIN}", "--email", "${EMAIL}", "--cf-api-token", "${CF_API_TOKEN}"]
     volumes:
       - lecf_certs:/etc/lecf/certs
+      - nginx_ssl:/etc/nginx/ssl
       - letsencrypt_data:/etc/letsencrypt
     restart: "no"
 
+  # Real web server container sharing the certificate directory
+  # The web server container mounts certificates and can be reloaded externally (e.g. docker exec nginx nginx -s reload)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_ssl:/etc/nginx/ssl:ro
+      - lecf_certs:/etc/lecf/certs:ro
+    restart: unless-stopped
+    depends_on:
+      - lecf
+
 volumes:
   lecf_certs:
+  nginx_ssl:
   letsencrypt_data:

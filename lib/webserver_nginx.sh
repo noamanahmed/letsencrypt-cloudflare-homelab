@@ -20,11 +20,20 @@ deploy_nginx() {
     mv "$target_dir/fullchain.pem.tmp" "$target_dir/fullchain.pem"
     mv "$target_dir/privkey.pem.tmp" "$target_dir/privkey.pem"
     
-    if command -v systemctl >/dev/null 2>&1; then
-        log_info "Reloading Nginx via systemctl..."
-        nginx -t && systemctl reload nginx
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t
+
+        if command -v systemctl >/dev/null 2>&1; then
+            log_info "Reloading Nginx via systemctl..."
+            systemctl reload nginx
+        elif command -v rc-service >/dev/null 2>&1; then
+            log_info "Reloading Nginx via OpenRC..."
+            rc-service nginx reload
+        else
+            log_info "Reloading Nginx directly..."
+            nginx -s reload
+        fi
     else
-        log_info "Reloading Nginx directly (systemctl not found)..."
-        nginx -t && nginx -s reload
+        log_info "Nginx binary not found locally. Certificates deployed to $target_dir; reload the web server container/service externally."
     fi
 }

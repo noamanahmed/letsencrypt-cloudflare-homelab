@@ -15,23 +15,14 @@ check_expiry() {
         return 0 # Needs renewal/issuance
     fi
 
-    local end_date
-    end_date=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
-    local end_epoch
-    end_epoch=$(date -d "$end_date" +%s)
-    local now_epoch
-    now_epoch=$(date +%s)
-    
-    local days_left=$(( (end_epoch - now_epoch) / 86400 ))
-    log_info "Certificate expires in $days_left days."
-
-    if [ "$days_left" -lt "$renew_days" ]; then
-        log_info "Certificate expires in less than $renew_days days. Renewal required."
-        return 0 # Needs renewal
+    local renew_seconds=$((renew_days * 86400))
+    if openssl x509 -checkend "$renew_seconds" -noout -in "$cert_file" >/dev/null 2>&1; then
+        log_info "Certificate is still valid for at least $renew_days days."
+        return 1 # Valid
     fi
 
-    log_info "Certificate is still valid for more than $renew_days days."
-    return 1 # Valid
+    log_info "Certificate expires within $renew_days days or is invalid. Renewal required."
+    return 0 # Needs renewal
 }
 
 run_certbot() {

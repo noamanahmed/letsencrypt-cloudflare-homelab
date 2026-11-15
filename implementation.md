@@ -126,10 +126,12 @@ Implemented in: `lib/cert.sh`
 Command:
 
 ```
-openssl x509 -enddate -noout -in cert.pem
+openssl x509 -checkend "$((RENEW_DAYS * 86400))" -noout -in "$cert_file"
 ```
 
-Compare with current time.
+Uses OpenSSL `-checkend` to test whether the certificate remains valid for the renewal window without relying on GNU `date` or `coreutils` (fully compatible with Alpine / BusyBox). Note that OpenSSL returns `0` when still valid (no renewal needed) and non-zero when expired or expiring soon, so the renewal condition is inverted accordingly:
+* Exit code `0` → valid (skip renewal)
+* Exit code non-zero → expires within `RENEW_DAYS` or invalid (renewal required)
 
 ---
 
@@ -138,7 +140,7 @@ Compare with current time.
 If:
 
 ```
-expiry < NOW + RENEW_DAYS
+check_expiry returns 0 (expired or within RENEW_DAYS)
 ```
 
 → renew
@@ -218,7 +220,17 @@ Path:
 Reload:
 
 ```
+# systemd:
 nginx -t && systemctl reload nginx
+
+# OpenRC (Alpine Linux):
+nginx -t && rc-service nginx reload
+
+# Direct:
+nginx -t && nginx -s reload
+
+# If Nginx is not installed locally (e.g. separate container deployment):
+# Certificates deployed to target dir; reload web server externally.
 ```
 
 ---
@@ -234,7 +246,17 @@ Path:
 Reload:
 
 ```
+# systemd:
 apachectl configtest && systemctl reload apache2
+
+# OpenRC (Alpine Linux):
+apachectl configtest && rc-service apache2 reload
+
+# Direct:
+apachectl configtest && apachectl graceful
+
+# If Apache is not installed locally (e.g. separate container deployment):
+# Certificates deployed to target dir; reload web server externally.
 ```
 
 ---
@@ -322,7 +344,7 @@ apt install certbot python3-certbot-dns-cloudflare curl dnsutils openssl
 Alpine:
 
 ```
-apk add certbot certbot-dns-cloudflare curl bind-tools openssl
+apk add --no-cache bash certbot certbot-dns-cloudflare curl bind-tools openssl
 ```
 
 ---
@@ -333,13 +355,17 @@ Must support:
 
 * /etc/letsencrypt
 * /etc/lecf
+* /etc/nginx/ssl (or shared certificate directory for web server)
 
 ---
 
 ### 13.4 Entrypoint
 
-```
-CMD ["sh", "/app/bin/lecf", "run"]
+Must execute directly with bash (not `sh`):
+
+```dockerfile
+ENTRYPOINT ["/app/bin/lecf"]
+CMD ["run", "nginx"]
 ```
 
 ---

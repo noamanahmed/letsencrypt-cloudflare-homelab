@@ -1,0 +1,11 @@
+# LECF certificate renewal check with BusyBox crond (Alpine Linux)
+# Runs twice daily at 00:00 and 12:00
+#
+# Usage on Alpine Linux:
+# 1. Append this line to /etc/crontabs/root (replace parameters with your own values):
+#    0 */12 * * * /usr/local/bin/lecf run nginx --domain example.com --email admin@example.com --cf-api-token YOUR_TOKEN
+# 2. Enable and start BusyBox crond service:
+#    rc-update add crond default
+#    rc-service crond start
+
+0 */12 * * * /usr/local/bin/lecf run nginx --domain example.com --email admin@example.com --cf-api-token YOUR_TOKEN

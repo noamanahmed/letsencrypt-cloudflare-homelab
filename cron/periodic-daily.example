@@ -1,0 +1,5 @@
+#!/bin/bash
+# Example periodic daily script for Alpine Linux (/etc/periodic/daily/lecf)
+# Copy to /etc/periodic/daily/lecf and make executable (chmod +x /etc/periodic/daily/lecf)
+
+exec /usr/local/bin/lecf run nginx --domain example.com --email admin@example.com --cf-api-token YOUR_TOKEN
